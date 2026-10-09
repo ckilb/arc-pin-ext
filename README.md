@@ -102,3 +102,7 @@ local fixture sites; `--headed` shows the browser. It is not part of `check` or
 | `public/`         | Manifest, HTML, CSS and icons copied into `dist/`             |
 | `test/unit/`      | Vitest suites (lib, worker, content, pages)                   |
 | `test/e2e/`       | Real-browser run and fixture server                           |
+
+## License
+
+[MIT](LICENSE)

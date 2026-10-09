@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Turn a bookmark folder into pinned tabs and tab groups in one browser window.",
+  "license": "MIT",
   "scripts": {
     "build": "node tools/build.mjs",
     "package": "node tools/package.mjs",
