@@ -295,7 +295,7 @@ async function popupInfo(tabId: number): Promise<PopupInfo> {
   const tab = await getTab(tabId);
   const settings = await loadSettings();
   const root = findNode(await chrome.bookmarks.getTree(), settings.rootId);
-  const url = tab?.url ?? '';
+  const url = tab?.url || tab?.pendingUrl || '';
   return {
     managed: false,
     title: tab?.title ?? '',
@@ -323,7 +323,7 @@ async function settingsInfo(): Promise<SettingsInfo> {
 async function addPin(tabId: number, title: string, parentId: string): Promise<Reply> {
   const reply = await withLock(async (): Promise<Reply> => {
     const tab = await getTab(tabId);
-    const url = normalizeUrl(tab?.url);
+    const url = normalizeUrl(tab?.url || tab?.pendingUrl);
     if (!tab || !url || !isWebUrl(url))
       return { ok: false, message: 'This page cannot be pinned.' };
     const settings = await loadSettings();
