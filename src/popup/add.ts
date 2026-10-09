@@ -48,7 +48,10 @@ async function main(): Promise<void> {
   name.value = info.title || info.url;
   for (const option of info.folders) {
     const label = option.depth === 0 ? 'Pinned tab (no group)' : option.title || '(unnamed)';
-    folder.add(new Option(`${'   '.repeat(Math.max(0, option.depth - 1))}${label}`, option.id));
+    const item = document.createElement('option');
+    item.value = option.id;
+    item.textContent = `${'\u00a0\u00a0\u00a0'.repeat(Math.max(0, option.depth - 1))}${label}`;
+    folder.append(item);
   }
   form.hidden = false;
   name.select();

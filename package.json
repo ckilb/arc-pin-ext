@@ -8,7 +8,7 @@
     "build": "node tools/build.mjs",
     "package": "node tools/package.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "VITEST_SKIP_INSTALL_CHECKS=1 vitest run --coverage",
     "test:e2e": "node tools/build.mjs && node test/e2e/run.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -23,6 +23,8 @@
   "devDependencies": {
     "@types/chrome": "^0.3.4",
     "@types/node": "^26.6.4",
+    "@vitest/coverage-v8": "^5.0.3",
+    "happy-dom": "^20.14.6",
     "playwright-core": "^1.64.0",
     "prettier": "^3.9.9",
     "rolldown": "^1.2.13",

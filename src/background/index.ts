@@ -76,21 +76,28 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === MENU_SYNC) void requestSync({ order: true });
   if (info.menuItemId === MENU_ADOPT_WINDOW && tab?.windowId !== undefined) {
-    const windowId = tab.windowId;
-    void withLock(() => adoptWindowLocked(windowId)).then(() => requestSync({ order: true }));
+    void makePinnedWindow(tab.windowId);
   }
 });
+
+function makePinnedWindow(windowId: number): Promise<void> {
+  return withLock(() => adoptWindowLocked(windowId)).then(() => requestSync({ order: true }));
+}
 
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
 
 chrome.tabs.onCreated.addListener((tab) => {
-  const createdAt = Date.now();
-  runtime.lastTabCreatedAt = createdAt;
+  runtime.lastTabCreatedAt = Date.now();
+  const beforeBoot = !runtime.booted;
   if (tab.id === undefined) return;
   const tabId = tab.id;
-  void withLock(() => placeNewTab(tabId, createdAt));
+  void withLock(async () => {
+    // Created while a restarted browser was still restoring its session.
+    if (beforeBoot && runtime.restarted) return;
+    await placeNewTab(tabId);
+  });
 });
 
 /**
@@ -98,8 +105,7 @@ chrome.tabs.onCreated.addListener((tab) => {
  * and goes after the managed area. Tabs the sync opens are bound before this runs, and
  * tabs restored by the session at startup are left where the browser put them.
  */
-async function placeNewTab(tabId: number, createdAt: number): Promise<void> {
-  if (createdAt <= runtime.restoreBootFinishedAt) return;
+async function placeNewTab(tabId: number): Promise<void> {
   const state = await loadState();
   if (state.windowId === null || bindingForTab(state, tabId)) return;
   const tab = await getTab(tabId);
@@ -112,17 +118,19 @@ async function placeNewTab(tabId: number, createdAt: number): Promise<void> {
     (isManagedGroupTitle(group.title) || Object.values(state.groups).includes(group.id));
 
   if (tab.pinned || inManagedGroup) {
-    if (Date.now() - state.bootAt < RESTORE_GRACE_MS) {
-      // Possibly restored late by the session: the sync adopts it or closes the copy.
-      void requestSync();
-      return;
-    }
-    // A duplicated managed tab is an ordinary copy; your own new pins stay pinned.
     const url = tab.pendingUrl || tab.url;
     const copiesManaged = Object.values(state.bindings).some(
       (binding) =>
-        binding.tabId !== null && (sameUrl(url, binding.url) || sameUrl(url, binding.lastUrl)),
+        sameUrl(url, binding.url) ||
+        sameUrl(url, binding.lastUrl) ||
+        sameUrl(url, binding.restoreUrl),
     );
+    if (copiesManaged && Date.now() - state.bootAt < RESTORE_GRACE_MS) {
+      // Probably restored late by the session: the sync adopts it or closes the copy.
+      void requestSync();
+      return;
+    }
+    // Your own new pins stay pinned; a duplicated managed tab becomes an ordinary copy.
     if (tab.pinned && !copiesManaged) return;
     if (tab.pinned) await chrome.tabs.update(tabId, { pinned: false });
     if (inManagedGroup) await chrome.tabs.ungroup(tabId).catch(() => {});
@@ -341,7 +349,11 @@ async function addPin(tabId: number, title: string, parentId: string): Promise<R
   return reply;
 }
 
-// Test hook: Playwright cannot click the toolbar button.
+// Test hooks: Playwright can reach the worker, but not the toolbar button or its menu.
 Object.assign(globalThis, {
-  tabPinTest: { clickAction: (tabId: number) => goHome(tabId, true) },
+  tabPinTest: {
+    clickAction: (tabId: number) => goHome(tabId, true),
+    makePinnedWindow,
+    sync: () => requestSync({ order: true }),
+  },
 });

@@ -34,7 +34,7 @@ import {
 } from './tabs.ts';
 
 /** After a restart, pinned or managed-group tabs restored late are still recognised as duplicates. */
-export const RESTORE_GRACE_MS = 60_000;
+export const RESTORE_GRACE_MS = 30_000;
 /** A closed pinned window hands over to another window only if the browser is not quitting. */
 const WINDOW_HANDOVER_MS = 2_000;
 /** Session restore is considered finished once no tab has been created for this long. */
@@ -46,8 +46,10 @@ export const runtime = {
   closingWindows: new Set<number>(),
   windowLostAt: 0,
   lastTabCreatedAt: Date.now(),
-  /** End of a restart boot; tabs created before it came from session restore. */
-  restoreBootFinishedAt: 0,
+  /** Set once the first task of this worker has run. */
+  booted: false,
+  /** This worker started after a browser or extension restart; its early tabs came from session restore. */
+  restarted: false,
   syncing: false,
 };
 
@@ -101,7 +103,15 @@ export function requestSync(options: Partial<SyncOptions> = {}): Promise<void> {
  * sync, which adopts restored tabs instead of opening second copies.
  */
 export async function bootLocked(): Promise<void> {
-  if (await loadSessionState()) return;
+  try {
+    if (!(await loadSessionState())) await restartLocked();
+  } finally {
+    runtime.booted = true;
+  }
+}
+
+async function restartLocked(): Promise<void> {
+  runtime.restarted = true;
 
   const started = Date.now();
   while (Date.now() - started < RESTORE_MAX_WAIT_MS) {
@@ -143,7 +153,6 @@ export async function bootLocked(): Promise<void> {
     if (tab.windowId !== state.windowId && marked.has(tab.groupId)) await releaseTab(tab.id);
   }
 
-  runtime.restoreBootFinishedAt = Date.now();
   await syncLocked({ order: true });
 }
 
