@@ -106,7 +106,7 @@ export async function onCommitted(
   if (!leavesSite(details.url, previous, binding.url)) return;
 
   const tab = await getTab(details.tabId);
-  if (!tab) return;
+  if (!tab || splitting.has(details.tabId)) return;
   splitting.add(details.tabId);
   try {
     await openOrdinaryTab(tab.windowId, details.url, tab.active);
@@ -116,6 +116,6 @@ export async function onCommitted(
       await chrome.tabs.update(details.tabId, { url: binding.url });
     }
   } finally {
-    setTimeout(() => splitting.delete(details.tabId), 1000);
+    splitting.delete(details.tabId);
   }
 }

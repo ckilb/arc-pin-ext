@@ -214,6 +214,15 @@ describe('links to other sites', () => {
     await load(null);
     expect(click(link('https://other.test/page')).defaultPrevented).toBe(false);
   });
+
+  test('respects the default target supplied by a base element', async () => {
+    document.head.insertAdjacentHTML('beforeend', '<base target="_blank">');
+    await load(managedView());
+    expect(click(link('https://other.test/page')).defaultPrevented).toBe(false);
+    expect(stub.sent).not.toContainEqual({ type: 'openSplit', url: 'https://other.test/page' });
+    // An explicit target still overrides the base target.
+    expect(click(link('https://other.test/page', { target: '_self' })).defaultPrevented).toBe(true);
+  });
 });
 
 describe('after an extension update', () => {

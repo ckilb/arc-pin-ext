@@ -92,6 +92,14 @@ describe('Add pin popup', () => {
     expect($('form').hidden).toBe(true);
   });
 
+  test('a worker error while opening is shown instead of an unpinnable-page message', async () => {
+    answer = () => ({ ok: false, message: 'Bookmarks unavailable.' });
+    await open('popup/add');
+    expect($('error').hidden).toBe(false);
+    expect($('error').textContent).toBe('Bookmarks unavailable.');
+    expect($('unpinnable').hidden).toBe(true);
+  });
+
   test('offers the name and the folders, and saves into the chosen one', async () => {
     answer = (message) => (message.type === 'popupOpened' ? info : { ok: true });
     await open('popup/add', '?tabId=7');
@@ -124,6 +132,17 @@ describe('Add pin popup', () => {
     $<HTMLFormElement>('form').dispatchEvent(new Event('submit', { cancelable: true }));
     await tick();
     expect($('error').textContent).toBe('Could not add the pin.');
+  });
+
+  test('a rejected save shows the error and allows a retry', async () => {
+    answer = (message) =>
+      message.type === 'popupOpened' ? info : Promise.reject(new Error('Worker unavailable.'));
+    await open('popup/add');
+    $<HTMLFormElement>('form').dispatchEvent(new Event('submit', { cancelable: true }));
+    await tick();
+    expect($('error').hidden).toBe(false);
+    expect($('error').textContent).toBe('Worker unavailable.');
+    expect($<HTMLButtonElement>('save').disabled).toBe(false);
   });
 
   test('cancel closes; a window without a tab closes at once', async () => {
@@ -220,5 +239,23 @@ describe('Options page', () => {
     expect(sent.at(-1)).toEqual({ type: 'syncNow' });
     expect(sync.disabled).toBe(false);
     expect($('pin-count').textContent).toBe('1 open pin');
+  });
+
+  test('a worker error is displayed and Sync now can be retried', async () => {
+    await open('options/options');
+    answer = () => ({ ok: false, message: 'Bookmarks unavailable.' });
+    const sync = $<HTMLButtonElement>('sync');
+    sync.click();
+    await tick();
+    await tick();
+    expect($('error').textContent).toBe('Bookmarks unavailable.');
+    expect($('error').hidden).toBe(false);
+    expect(sync.disabled).toBe(false);
+
+    answer = () => settingsInfo();
+    sync.click();
+    await tick();
+    await tick();
+    expect($('error').hidden).toBe(true);
   });
 });

@@ -103,6 +103,19 @@ describe('new tabs in the pinned window', () => {
 });
 
 describe('other sites', () => {
+  test('a second cross-site navigation immediately after recovery still splits', async () => {
+    const mail = tabOf(browser, ids.mail);
+    browser.navigate(mail, OTHER);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(tab(mail)?.url).toBe(MAIL);
+
+    const next = 'https://another.test/page';
+    browser.navigate(mail, next);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(tab(mail)?.url).toBe(MAIL);
+    expect([...browser.tabs.values()].filter((it) => it.url === next)).toHaveLength(1);
+  });
+
   test('a link to another site opens a new tab and the pin steps back', async () => {
     const mail = tabOf(browser, ids.mail);
     await browser.chrome.tabs.update(mail, { active: true });
@@ -230,6 +243,24 @@ describe('return to the bookmark', () => {
 });
 
 describe('messages', () => {
+  test('concurrent settings patches both survive', async () => {
+    await Promise.all([
+      send(browser, { type: 'setSettings', patch: { tripleClick: true } }),
+      send(browser, { type: 'setSettings', patch: { newTabsAtStart: true } }),
+    ]);
+    const info = await send<SettingsInfo>(browser, { type: 'getSettings' });
+    expect(info.settings).toMatchObject({ tripleClick: true, newTabsAtStart: true });
+  });
+
+  test('selecting a bookmark as the pin folder is refused without closing pins', async () => {
+    const before = [...browser.tabs.keys()];
+    expect(
+      await send<Reply>(browser, { type: 'setSettings', patch: { rootId: ids.mail } }),
+    ).toMatchObject({ ok: false });
+    expect([...browser.tabs.keys()]).toEqual(before);
+    expect((await send<SettingsInfo>(browser, { type: 'getSettings' })).settings.rootId).toBe('1');
+  });
+
   test('hello tells a page whether it is managed', async () => {
     const managed = await send<TabView>(
       browser,

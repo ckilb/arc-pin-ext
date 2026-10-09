@@ -3,7 +3,7 @@
  */
 
 import { isFolder, type BookmarkNode } from '../lib/layout.ts';
-import type { Request, Settings, SettingsInfo } from '../lib/types.ts';
+import type { Reply, Request, Settings, SettingsInfo } from '../lib/types.ts';
 
 function element<T extends HTMLElement>(id: string, type: { new (): T }): T {
   const found = document.getElementById(id);
@@ -17,6 +17,7 @@ const change = element('change', HTMLButtonElement);
 const sync = element('sync', HTMLButtonElement);
 const picker = element('picker', HTMLElement);
 const tree = element('tree', HTMLUListElement);
+const error = element('error', HTMLParagraphElement);
 const toggles = {
   tripleClick: element('tripleClick', HTMLInputElement),
   pageTitleInTitle: element('pageTitleInTitle', HTMLInputElement),
@@ -25,18 +26,28 @@ const toggles = {
 
 let info: SettingsInfo | null = null;
 
-function send(message: Request): Promise<SettingsInfo> {
-  return chrome.runtime.sendMessage(message) as Promise<SettingsInfo>;
+async function send(message: Request): Promise<SettingsInfo> {
+  const reply: SettingsInfo | Reply = await chrome.runtime.sendMessage(message);
+  if (!reply || !('settings' in reply)) {
+    throw new Error(reply?.message ?? 'Could not load settings.');
+  }
+  return reply;
+}
+
+function showError(reason: unknown): void {
+  error.textContent = reason instanceof Error ? reason.message : String(reason);
+  error.hidden = false;
 }
 
 function render(next: SettingsInfo): void {
+  error.hidden = true;
   info = next;
   path.textContent = next.folderPath || '(unnamed folder)';
   count.textContent = `${next.pinCount} open pin${next.pinCount === 1 ? '' : 's'}`;
   for (const [key, input] of Object.entries(toggles)) {
     input.checked = next.settings[key as keyof typeof toggles];
   }
-  if (!picker.hidden) void renderTree();
+  if (!picker.hidden) void renderTree().catch(showError);
 }
 
 function folderItem(node: BookmarkNode): HTMLLIElement {
@@ -47,7 +58,9 @@ function folderItem(node: BookmarkNode): HTMLLIElement {
   button.textContent = node.title || '(unnamed)';
   button.setAttribute('aria-current', String(node.id === info?.settings.rootId));
   button.addEventListener('click', () => {
-    void send({ type: 'setSettings', patch: { rootId: node.id } }).then(render);
+    void send({ type: 'setSettings', patch: { rootId: node.id } })
+      .then(render)
+      .catch(showError);
   });
   item.append(button);
   const children = (node.children ?? []).filter(isFolder);
@@ -69,13 +82,14 @@ async function renderTree(): Promise<void> {
 change.addEventListener('click', () => {
   picker.hidden = !picker.hidden;
   change.textContent = picker.hidden ? 'Change…' : 'Done';
-  if (!picker.hidden) void renderTree();
+  if (!picker.hidden) void renderTree().catch(showError);
 });
 
 sync.addEventListener('click', () => {
   sync.disabled = true;
   void send({ type: 'syncNow' })
     .then(render)
+    .catch(showError)
     .finally(() => {
       sync.disabled = false;
     });
@@ -83,8 +97,10 @@ sync.addEventListener('click', () => {
 
 for (const [key, input] of Object.entries(toggles)) {
   input.addEventListener('change', () => {
-    void send({ type: 'setSettings', patch: { [key]: input.checked } }).then(render);
+    void send({ type: 'setSettings', patch: { [key]: input.checked } })
+      .then(render)
+      .catch(showError);
   });
 }
 
-void send({ type: 'getSettings' }).then(render);
+void send({ type: 'getSettings' }).then(render).catch(showError);

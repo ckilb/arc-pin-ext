@@ -3,7 +3,7 @@
  * a worker woken by an event never misses it.
  */
 
-import { findNode, folderOptions, isManagedGroupTitle, pathOf } from '../lib/layout.ts';
+import { findNode, folderOptions, isFolder, isManagedGroupTitle, pathOf } from '../lib/layout.ts';
 import { isWebUrl, normalizeUrl, sameUrl } from '../lib/url.ts';
 import type { PopupInfo, Reply, Request, SettingsInfo, TabView } from '../lib/types.ts';
 import { forgetTab, goHome, onCommitted, openOrdinaryTab } from './navigation.ts';
@@ -56,7 +56,7 @@ async function injectContentScripts(): Promise<void> {
   );
 }
 
-void withLock(bootLocked);
+const boot = withLock(bootLocked);
 
 // ---------------------------------------------------------------------------
 // Toolbar
@@ -66,6 +66,7 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab.id === undefined) return;
   const tabId = tab.id;
   void (async () => {
+    await boot;
     if (await goHome(tabId, true)) return;
     // Not managed after all (the popup was cleared for a tab that has since been released).
     await setActionPopup(tabId, false);
@@ -215,10 +216,9 @@ chrome.windows.onRemoved.addListener((windowId) => {
   })();
 });
 
-chrome.windows.onCreated.addListener(() => {
-  void (async () => {
-    if ((await loadState()).windowId === null) void requestSync({ order: true });
-  })();
+chrome.windows.onCreated.addListener((window) => {
+  // The stored window id can still refer to a closed window. Let the sync resolve it.
+  if (window.type === 'normal' && !window.incognito) void requestSync();
 });
 
 // ---------------------------------------------------------------------------
@@ -247,6 +247,8 @@ chrome.bookmarks.onImportEnded.addListener(bookmarksChanged);
 // ---------------------------------------------------------------------------
 
 async function handle(message: Request, sender: chrome.runtime.MessageSender): Promise<unknown> {
+  // Pages opened during session restore need the finished bindings and folder selection.
+  await boot;
   const senderTabId = sender.tab?.id;
   switch (message.type) {
     case 'hello': {
@@ -268,10 +270,18 @@ async function handle(message: Request, sender: chrome.runtime.MessageSender): P
     case 'getSettings':
       return settingsInfo();
     case 'setSettings': {
-      const before = await loadSettings();
-      const settings = await saveSettings(message.patch);
-      if (settings.rootId !== before.rootId) void requestSync({ order: true });
-      await publish(await loadState(), settings);
+      const rootChanged = await withLock(async () => {
+        if (message.patch.rootId !== undefined) {
+          const root = findNode(await chrome.bookmarks.getTree(), message.patch.rootId);
+          if (!root || !isFolder(root)) throw new Error('Choose an existing bookmark folder.');
+        }
+        const before = await loadSettings();
+        const settings = await saveSettings(message.patch);
+        if (settings.rootId !== before.rootId) return true;
+        await publish(await loadState(), settings);
+        return false;
+      });
+      if (rootChanged) await requestSync({ order: true });
       return settingsInfo();
     }
     case 'syncNow':
@@ -328,7 +338,8 @@ async function addPin(tabId: number, title: string, parentId: string): Promise<R
       return { ok: false, message: 'This page cannot be pinned.' };
     const settings = await loadSettings();
     const root = findNode(await chrome.bookmarks.getTree(), settings.rootId);
-    if (!root || !findNode([root], parentId)) {
+    const parent = root && findNode([root], parentId);
+    if (!parent || !isFolder(parent)) {
       return { ok: false, message: 'Choose a folder inside the pin folder.' };
     }
     const bookmark = await chrome.bookmarks.create({ parentId, title: title.trim() || url, url });

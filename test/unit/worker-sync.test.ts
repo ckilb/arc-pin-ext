@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { SettingsInfo } from '../../src/lib/types.ts';
 import { FakeBrowser, flush, send, sessionState, startWorker, tabOf } from '../fakes/harness.ts';
 
 const MAIL = 'https://mail.example.com/';
@@ -34,6 +35,26 @@ afterEach(() => {
 });
 
 describe('first install', () => {
+  test('settings requested during boot describe the completed initial sync', async () => {
+    browser.seedWindow([{ url: 'about:blank' }]);
+    ids = bookmarks();
+    vi.resetModules();
+    (globalThis as { chrome?: typeof chrome }).chrome = browser.chrome;
+    await import('../../src/background/index.ts');
+
+    const info = await send<SettingsInfo>(browser, { type: 'getSettings' });
+    expect(info.pinCount).toBe(4);
+  });
+
+  test('an invalid persisted pin folder falls back to the bookmarks bar', async () => {
+    const win = browser.seedWindow([{ url: 'about:blank' }]);
+    ids = bookmarks();
+    browser.storage.local.data.settings = { rootId: ids.mail };
+    await startWorker(browser, 'install');
+    expect(managed(win)).toEqual(LAYOUT);
+    expect(browser.storage.local.data.settings).toMatchObject({ rootId: '1' });
+  });
+
   test('the bookmark folder becomes pins and groups in the focused window', async () => {
     const win = browser.seedWindow([{ url: 'about:blank' }, { url: 'https://own.example.com/' }]);
     ids = bookmarks();
@@ -345,6 +366,30 @@ describe('windows', () => {
       bindings: Record<string, { lastUrl: string }>;
     };
     expect(persisted.bindings[ids.mail]?.lastUrl).toBe('https://mail.example.com/thread/7');
+  });
+
+  test('reopening a window after all windows close resumes syncing', async () => {
+    browser.closeWindow(win);
+    browser.closeWindow(second);
+    await flush();
+
+    const reopened = await browser.chrome.windows.create({ url: 'about:blank' });
+    await flush();
+    expect(sessionState(browser).windowId).toBe(reopened?.id);
+    expect(managed(reopened!.id!)).toEqual(LAYOUT);
+  });
+
+  test('a renamed managed group moved to another window becomes ordinary there', async () => {
+    const issues = tabOf(browser, ids.issues);
+    const wiki = tabOf(browser, ids.wiki);
+    const groupId = browser.tabs.get(issues)!.groupId;
+    await browser.chrome.tabGroups.update(groupId, { title: 'My renamed group' });
+    await browser.chrome.tabGroups.move(groupId, { windowId: second, index: -1 });
+    await flush();
+
+    expect(browser.tabs.get(issues)?.groupId).toBe(-1);
+    expect(browser.tabs.get(wiki)?.groupId).toBe(-1);
+    expect(managed(win)).toEqual(LAYOUT);
   });
 
   test('"Make this the pinned window" moves the same tabs there', async () => {

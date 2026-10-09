@@ -67,12 +67,17 @@ export async function managedGroupIds(
 }
 
 /** Turn a tab back into an ordinary one: no native pin, no managed group. */
-export async function releaseTab(tabId: number): Promise<void> {
+export async function releaseTab(
+  tabId: number,
+  knownGroupIds: readonly number[] = [],
+): Promise<void> {
   const tab = await getTab(tabId);
   if (!tab) return;
   if (tab.groupId !== NO_GROUP) {
     const group = await chrome.tabGroups.get(tab.groupId).catch(() => null);
-    if (isManagedGroupTitle(group?.title)) await chrome.tabs.ungroup(tabId).catch(() => {});
+    if (knownGroupIds.includes(tab.groupId) || isManagedGroupTitle(group?.title)) {
+      await chrome.tabs.ungroup(tabId).catch(() => {});
+    }
   }
   if (tab.pinned) await chrome.tabs.update(tabId, { pinned: false }).catch(() => {});
 }

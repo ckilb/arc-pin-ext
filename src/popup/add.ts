@@ -23,6 +23,12 @@ function send<T>(message: Request): Promise<T> {
   return chrome.runtime.sendMessage(message) as Promise<T>;
 }
 
+function showError(reason: unknown): void {
+  error.textContent = reason instanceof Error ? reason.message : String(reason);
+  error.hidden = false;
+  save.disabled = false;
+}
+
 async function main(): Promise<void> {
   // `?tabId=` lets the end-to-end tests open the popup in a tab.
   const fromQuery = Number(new URLSearchParams(window.location.search).get('tabId'));
@@ -35,7 +41,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const info = await send<PopupInfo>({ type: 'popupOpened', tabId });
+  const info = await send<PopupInfo | Reply>({ type: 'popupOpened', tabId });
+  if ('ok' in info) throw new Error(info.message ?? 'Could not open the pin dialog.');
   if (info.managed) {
     window.close();
     return;
@@ -61,18 +68,13 @@ async function main(): Promise<void> {
     event.preventDefault();
     save.disabled = true;
     error.hidden = true;
-    void send<Reply>({ type: 'addPin', tabId, title: name.value, parentId: folder.value }).then(
-      (reply) => {
-        if (reply.ok) {
-          window.close();
-          return;
-        }
-        error.textContent = reply.message ?? 'Could not add the pin.';
-        error.hidden = false;
-        save.disabled = false;
-      },
-    );
+    void send<Reply>({ type: 'addPin', tabId, title: name.value, parentId: folder.value })
+      .then((reply) => {
+        if (!reply.ok) throw new Error(reply.message ?? 'Could not add the pin.');
+        window.close();
+      })
+      .catch(showError);
   });
 }
 
-void main();
+void main().catch(showError);

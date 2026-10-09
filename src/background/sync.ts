@@ -6,7 +6,7 @@
  * merged into it, so a burst of bookmark or tab events costs one sync, not twenty.
  */
 
-import { buildLayout, findNode, groupTitle } from '../lib/layout.ts';
+import { buildLayout, findNode, groupTitle, isFolder } from '../lib/layout.ts';
 import { pickRestoredWindow, planBindings } from '../lib/plan.ts';
 import type { Binding, Layout, Settings, State } from '../lib/types.ts';
 import {
@@ -164,7 +164,7 @@ async function currentLayout(): Promise<{ layout: Layout; settings: Settings } |
   let settings = await loadSettings();
   const tree = await chrome.bookmarks.getTree();
   let root = findNode(tree, settings.rootId);
-  if (!root && settings.rootId !== '1') {
+  if ((!root || !isFolder(root)) && settings.rootId !== '1') {
     // The folder was deleted (or has not arrived from bookmark sync yet).
     settings = await saveSettings({ rootId: '1' });
     root = findNode(tree, '1');
@@ -212,7 +212,7 @@ async function syncLocked(options: SyncOptions): Promise<void> {
   // Saved before anything is closed: a tab closed here must not look like a pin to reopen.
   await saveState(state);
 
-  for (const tabId of plan.release) await releaseTab(tabId);
+  for (const tabId of plan.release) await releaseTab(tabId, Object.values(state.groups));
   for (const tabId of plan.close) await chrome.tabs.remove(tabId).catch(() => {});
 
   for (const bookmarkId of plan.create) {

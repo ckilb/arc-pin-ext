@@ -102,7 +102,11 @@ declare global {
           node instanceof HTMLAnchorElement || node instanceof HTMLAreaElement,
       );
     if (!link || link.hasAttribute('download')) return;
-    const target = link.target.toLowerCase();
+    const target = (
+      link.target ||
+      document.querySelector('base[target]')?.getAttribute('target') ||
+      ''
+    ).toLowerCase();
     if (target !== '' && target !== '_self' && target !== '_top' && target !== '_parent') return;
     const href = link.href;
     if (!isWebUrl(href)) return;

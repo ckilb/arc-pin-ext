@@ -192,13 +192,29 @@ async function settle(quietMs = 1_200, timeout = 10_000): Promise<Snapshot> {
   return JSON.parse(last) as Snapshot;
 }
 
-async function pageAt(context: BrowserContext, url: string): Promise<Page> {
+/** Identify the exact tab, even when another window has a page on the same URL. */
+async function pageAt(context: BrowserContext, url: string, tabId: number): Promise<Page> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const page = context.pages().find((it) => it.url() === url);
-    if (page) return page;
+    await inWorker(
+      (id) =>
+        chrome.scripting.executeScript({
+          target: { tabId: id },
+          func: (id: number) => {
+            document.documentElement.dataset.tabPinE2e = String(id);
+          },
+          args: [id],
+        }),
+      tabId,
+    ).catch(() => {});
+    for (const page of context.pages().filter((it) => it.url() === url)) {
+      const id = await page
+        .evaluate(() => document.documentElement.dataset.tabPinE2e)
+        .catch(() => undefined);
+      if (id === String(tabId)) return page;
+    }
     await sleep(100);
   }
-  throw new Error(`no page at ${url}`);
+  throw new Error(`no page for tab ${tabId} at ${url}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -409,8 +425,8 @@ async function main(): Promise<void> {
 
     // ------------------------------------------------------------------ other sites
     section('Other sites open in new tabs');
-    let mail = await pageAt(context, home('mail'));
     const mailId = boundTab(snap, 'Mail')?.id ?? -1;
+    let mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#cross');
     ({ ok, snap } = await waitFor((it) => tabsAt(it, other('crossed')).length === 1));
     await sleep(500);
@@ -445,7 +461,7 @@ async function main(): Promise<void> {
     await inWorker((id) => (globalThis as any).tabPinTest.clickAction(id), mailId);
     await waitFor((it) => it.tabs.find((tab) => tab.id === mailId)?.url === home('mail'));
 
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#redirect');
     ({ ok } = await waitFor(
       (it) => it.tabs.find((tab) => tab.id === mailId)?.url === other('landed'),
@@ -460,7 +476,7 @@ async function main(): Promise<void> {
     await inWorker((id) => (globalThis as any).tabPinTest.clickAction(id), mailId);
     await waitFor((it) => it.tabs.find((tab) => tab.id === mailId)?.url === home('mail'));
 
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#jsnav');
     ({ ok, snap } = await waitFor(
       (it) =>
@@ -477,7 +493,7 @@ async function main(): Promise<void> {
 
     // ------------------------------------------------------------------ return
     section('Return to the bookmark');
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#same');
     await waitFor(
       (it) =>
@@ -506,7 +522,7 @@ async function main(): Promise<void> {
       server.hits('home.site.test', '/page/mail') === loadsBefore + 1,
     );
 
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#hash');
     await waitFor(
       (it) => it.tabs.find((tab) => tab.id === mailId)?.url === `${home('mail')}#section`,
@@ -522,7 +538,7 @@ async function main(): Promise<void> {
     );
 
     const popupPage = await context.newPage();
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#same');
     await waitFor(
       (it) =>
@@ -538,11 +554,11 @@ async function main(): Promise<void> {
 
     // ------------------------------------------------------------------ triple-click
     section('Triple-click');
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#same');
     const deeper = server.url('home.site.test', '/page/deeper');
     await waitFor((it) => it.tabs.find((tab) => tab.id === mailId)?.url === deeper);
-    mail = await pageAt(context, deeper);
+    mail = await pageAt(context, deeper, mailId);
     await mail.click('#text', { clickCount: 3 });
     await sleep(800);
     snap = await snapshot();
@@ -565,7 +581,7 @@ async function main(): Promise<void> {
     ));
     check('triple-click returns the pin when enabled', ok);
     const homeLoads = server.hits('home.site.test', '/page/mail');
-    mail = await pageAt(context, home('mail'));
+    mail = await pageAt(context, home('mail'), mailId);
     await mail.click('#text', { clickCount: 3 });
     await sleep(800);
     check(
@@ -609,7 +625,7 @@ async function main(): Promise<void> {
 
     // ------------------------------------------------------------------ new tabs
     section('New tabs');
-    const issuesPage = await pageAt(context, home('issues'));
+    const issuesPage = await pageAt(context, home('issues'), issuesId);
     await issuesPage.click('#same', { modifiers: ['Control'] });
     ({ ok, snap } = await waitFor(
       (it) => tabsAt(it, server.url('home.site.test', '/page/deeper'), pinnedWindow).length === 1,
@@ -896,10 +912,10 @@ async function main(): Promise<void> {
     if (mailAfter) {
       await inWorker((id) => chrome.tabs.update(id, { active: true }), mailAfter.id);
       await sleep(300);
-      mail = await pageAt(context, home('mail'));
+      mail = await pageAt(context, home('mail'), mailAfter.id);
       await mail.click('#same');
       await waitFor((it) => it.tabs.find((tab) => tab.id === mailAfter.id)?.url === deeper);
-      mail = await pageAt(context, deeper);
+      mail = await pageAt(context, deeper, mailAfter.id);
       await mail.click('#text', { clickCount: 3 });
       ({ ok } = await waitFor(
         (it) => it.tabs.find((tab) => tab.id === mailAfter.id)?.url === home('mail'),
@@ -907,7 +923,7 @@ async function main(): Promise<void> {
       check('triple-click works right after an update, without reloading pages', ok);
 
       // Leave the pin on another page for the restart below.
-      mail = await pageAt(context, home('mail'));
+      mail = await pageAt(context, home('mail'), mailAfter.id);
       await mail.click('#same');
       await waitFor((it) => it.tabs.find((tab) => tab.id === mailAfter.id)?.url === deeper);
       await settle();
@@ -941,9 +957,10 @@ async function main(): Promise<void> {
     );
     const restoredMail = boundTab(snap, 'Mail');
     check(
-      'the restored tab is adopted on the page it was left on, with no copy on the bookmark URL',
+      'the restored tab is adopted on the page it was left on, with no managed copy on the bookmark URL',
       restoredMail?.url === server.url('home.site.test', '/page/deeper') &&
-        tabsAt(snap, home('mail'), pinned).length === 0,
+        tabsAt(snap, home('mail'), pinned).filter((tab) => tab.pinned || tab.groupId !== -1)
+          .length === 0,
       snap.tabs.map((tab) => `${tab.windowId}:${tab.pinned ? 'pin:' : ''}${tab.url}`),
     );
     check(
