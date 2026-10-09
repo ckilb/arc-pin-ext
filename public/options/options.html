@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tab Pin options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="../icons/icon48.png" alt="" width="32" height="32" />
+        <div>
+          <h1>Tab Pin</h1>
+          <p class="muted">A bookmark folder, kept open as pinned tabs and tab groups.</p>
+        </div>
+      </header>
+
+      <section>
+        <h2>Pin folder</h2>
+        <div class="folder-row">
+          <div>
+            <div id="folder-path" class="path">Loading…</div>
+            <div id="pin-count" class="muted"></div>
+          </div>
+          <div class="buttons">
+            <button type="button" id="change">Change…</button>
+            <button type="button" id="sync" class="primary">Sync now</button>
+          </div>
+        </div>
+        <div id="picker" class="picker" hidden>
+          <p class="muted">
+            Loose bookmarks become pinned tabs. Each folder inside becomes a tab group, and deeper
+            folders join the group they sit in.
+          </p>
+          <ul id="tree" class="tree" role="tree"></ul>
+        </div>
+      </section>
+
+      <section>
+        <h2>Behaviour</h2>
+        <label class="toggle">
+          <input type="checkbox" id="tripleClick" />
+          <span>
+            <strong>Triple-click returns to the bookmark</strong>
+            <em>Triple-click a pinned page that has left its bookmark URL to go back there.</em>
+          </span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="pageTitleInTitle" />
+          <span>
+            <strong>Show the page title after the bookmark name</strong>
+            <em
+              >A tab away from its bookmark URL is titled “/ Name / Page title” instead of “/
+              Name”.</em
+            >
+          </span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="newTabsAtStart" />
+          <span>
+            <strong>Open new tabs at the start</strong>
+            <em>New tabs open right after the last tab group instead of at the far end.</em>
+          </span>
+        </label>
+      </section>
+
+      <section class="muted help">
+        <p>
+          Click the toolbar icon on a pinned tab to return it to its bookmark (or reload it there);
+          on any other tab it adds the tab as a pin. Right-click the icon for <em>Sync now</em> and
+          <em>Make this the pinned window</em>.
+        </p>
+        <p>Pins live in one window. Other windows are left alone.</p>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

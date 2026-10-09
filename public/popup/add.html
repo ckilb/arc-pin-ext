@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Add pin</title>
+    <link rel="stylesheet" href="add.css" />
+  </head>
+  <body>
+    <form id="form" hidden>
+      <h1>Add pin</h1>
+      <label class="field">
+        <span>Name</span>
+        <input id="name" type="text" autocomplete="off" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>Folder</span>
+        <select id="folder"></select>
+      </label>
+      <p id="error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="button" id="cancel">Cancel</button>
+        <button type="submit" id="save" class="primary">Save</button>
+      </div>
+    </form>
+    <p id="unpinnable" class="note" hidden>Only http and https pages can be pinned.</p>
+    <script src="add.js"></script>
+  </body>
+</html>
