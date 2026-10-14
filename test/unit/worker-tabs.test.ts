@@ -137,6 +137,52 @@ describe('other sites', () => {
     expect([...browser.tabs.values()].filter((it) => it.url === OTHER)).toHaveLength(1);
   });
 
+  test('a typed URL that redirects to another site still splits', async () => {
+    const mail = tabOf(browser, ids.mail);
+    browser.navigate(mail, 'https://mail.example.com/inbox');
+    await flush();
+    browser.navigate(mail, OTHER, {
+      transitionType: 'typed',
+      transitionQualifiers: ['from_address_bar', 'server_redirect'],
+    });
+    await flush();
+    expect(tab(mail)?.url).toBe('https://mail.example.com/inbox');
+    expect([...browser.tabs.values()].filter((it) => it.url === OTHER)).toHaveLength(1);
+  });
+
+  test.each(['auto_bookmark', 'generated', 'keyword'])(
+    'a %s navigation to another site splits like a typed one',
+    async (transitionType) => {
+      const mail = tabOf(browser, ids.mail);
+      browser.navigate(mail, OTHER, { transitionType });
+      await flush();
+      expect(tab(mail)?.url).toBe(MAIL);
+      expect([...browser.tabs.values()].filter((it) => it.url === OTHER)).toHaveLength(1);
+    },
+  );
+
+  test('a typed URL on the same site, redirected or not, stays in the pin', async () => {
+    const mail = tabOf(browser, ids.mail);
+    const count = browser.tabs.size;
+    browser.navigate(mail, 'https://www.example.com/', {
+      transitionType: 'typed',
+      transitionQualifiers: ['from_address_bar', 'server_redirect'],
+    });
+    await flush();
+    expect(tab(mail)?.url).toBe('https://www.example.com/');
+    expect(browser.tabs.size).toBe(count);
+  });
+
+  test('back and forward after a typed URL stay in the pin', async () => {
+    const mail = tabOf(browser, ids.mail);
+    browser.navigate(mail, OTHER, {
+      transitionType: 'typed',
+      transitionQualifiers: ['from_address_bar', 'forward_back'],
+    });
+    await flush();
+    expect(tab(mail)?.url).toBe(OTHER);
+  });
+
   test('redirects, reloads, form posts, history and subdomains stay in the pin', async () => {
     const mail = tabOf(browser, ids.mail);
     browser.navigate(mail, 'https://accounts.example.com/login');

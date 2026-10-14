@@ -491,6 +491,38 @@ async function main(): Promise<void> {
     for (const tab of tabsAt(snap, other('scripted')))
       await inWorker((id) => chrome.tabs.remove(id), tab.id);
 
+    // goto is a browser-initiated navigation like the address bar: the "typed" transition.
+    mail = await pageAt(context, home('mail'), mailId);
+    await mail.goto(other('typed')).catch(() => {});
+    ({ ok, snap } = await waitFor(
+      (it) =>
+        tabsAt(it, other('typed')).length === 1 &&
+        it.tabs.find((tab) => tab.id === mailId)?.url === home('mail'),
+    ));
+    check(
+      'a typed URL on another site moves to a new tab and the pin steps back',
+      ok,
+      snap.tabs.map((tab) => tab.url),
+    );
+    for (const tab of tabsAt(snap, other('typed')))
+      await inWorker((id) => chrome.tabs.remove(id), tab.id);
+
+    // Typing a bare domain usually redirects (http to https, apex to www).
+    mail = await pageAt(context, home('mail'), mailId);
+    await mail.goto(server.url('other.test', '/redirect-away')).catch(() => {});
+    ({ ok, snap } = await waitFor(
+      (it) =>
+        tabsAt(it, other('landed')).length === 1 &&
+        it.tabs.find((tab) => tab.id === mailId)?.url === home('mail'),
+    ));
+    check(
+      'a typed URL that redirects to another site moves to a new tab too',
+      ok,
+      snap.tabs.map((tab) => tab.url),
+    );
+    for (const tab of tabsAt(snap, other('landed')))
+      await inWorker((id) => chrome.tabs.remove(id), tab.id);
+
     // ------------------------------------------------------------------ return
     section('Return to the bookmark');
     mail = await pageAt(context, home('mail'), mailId);

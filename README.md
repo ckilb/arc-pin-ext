@@ -56,8 +56,10 @@ closed as a copy within the first 30 s.
 **Other sites.** In a managed tab, a link to a different site (registrable domain plus
 port: `mail.google.com` and `accounts.google.com` are one site) opens in a new ordinary
 tab instead. Redirects, form posts, reloads and back/forward stay in the tab, so sign-in
-flows work. Navigations that cannot be intercepted before they load (typed URLs,
-scripted navigation) are moved to a new tab after they commit, and the pin steps back.
+flows work. Navigations that cannot be intercepted before they load (typed or pasted URLs,
+search text, bookmark and history clicks, scripted navigation) are moved to a new tab after
+they commit, and the pin steps back to the page it was on. A URL you start in the browser
+is judged by the site it ends up on, even when it redirects (`golem.de` → `www.golem.de`).
 
 **Return to the bookmark.** Click the toolbar icon on a managed tab: it returns to its
 bookmark URL, or reloads it if it is already there. Optionally, **triple-click** a page

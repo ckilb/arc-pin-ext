@@ -70,7 +70,25 @@ const KEEP_TRANSITIONS = new Set<string>([
   'auto_subframe',
   'manual_subframe',
 ]);
-const KEEP_QUALIFIERS = new Set<string>(['server_redirect', 'client_redirect', 'forward_back']);
+// Redirects keep a navigation in the tab (sign-in flows), unless the user started it in the
+// browser itself: a typed `golem.de` usually redirects (http to https, apex to www), and
+// that must not exempt it. Back/forward always stays.
+const REDIRECT_QUALIFIERS = new Set<string>(['server_redirect', 'client_redirect']);
+const BROWSER_TRANSITIONS = new Set<string>([
+  'typed',
+  'auto_bookmark',
+  'generated',
+  'keyword',
+  'keyword_generated',
+]);
+
+function staysInTab(details: chrome.webNavigation.WebNavigationTransitionCallbackDetails): boolean {
+  const { transitionType, transitionQualifiers: qualifiers } = details;
+  if (KEEP_TRANSITIONS.has(transitionType) || qualifiers.includes('forward_back')) return true;
+  const startedInBrowser =
+    BROWSER_TRANSITIONS.has(transitionType) || qualifiers.includes('from_address_bar');
+  return !startedInBrowser && qualifiers.some((qualifier) => REDIRECT_QUALIFIERS.has(qualifier));
+}
 
 /** The last main-frame URL committed in each tab, for "the page it came from". */
 const committed = new Map<number, string>();
@@ -93,8 +111,7 @@ export async function onCommitted(
   const from = committed.get(details.tabId);
   committed.set(details.tabId, details.url);
 
-  if (KEEP_TRANSITIONS.has(details.transitionType)) return;
-  if (details.transitionQualifiers.some((qualifier) => KEEP_QUALIFIERS.has(qualifier))) return;
+  if (staysInTab(details)) return;
   if (splitting.has(details.tabId)) return;
 
   const entry = bindingForTab(await loadState(), details.tabId);
@@ -113,7 +130,7 @@ export async function onCommitted(
     try {
       await chrome.tabs.goBack(details.tabId);
     } catch {
-      await chrome.tabs.update(details.tabId, { url: binding.url });
+      await chrome.tabs.update(details.tabId, { url: previous ?? binding.url });
     }
   } finally {
     splitting.delete(details.tabId);
